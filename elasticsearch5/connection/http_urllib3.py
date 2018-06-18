@@ -1,4 +1,5 @@
 import time
+import gzip
 import urllib3
 from urllib3.exceptions import ReadTimeoutError, SSLError as UrllibSSLError
 import warnings
@@ -47,9 +48,11 @@ class Urllib3HttpConnection(Connection):
     def __init__(self, host='localhost', port=9200, http_auth=None,
             use_ssl=False, verify_certs=True, ca_certs=None, client_cert=None,
             client_key=None, ssl_version=None, ssl_assert_hostname=None,
-            ssl_assert_fingerprint=None, maxsize=10, headers=None, **kwargs):
+            ssl_assert_fingerprint=None, maxsize=10, headers=None,
+            http_compress=False, **kwargs):
 
         super(Urllib3HttpConnection, self).__init__(host=host, port=port, use_ssl=use_ssl, **kwargs)
+        self.http_compress = http_compress
         self.headers = urllib3.make_headers(keep_alive=True)
         if http_auth is not None:
             if isinstance(http_auth, (tuple, list)):
@@ -60,6 +63,10 @@ class Urllib3HttpConnection(Connection):
         if headers:
             for k in headers:
                 self.headers[k.lower()] = headers[k]
+
+        if self.http_compress == True:
+            self.headers.update(urllib3.make_headers(accept_encoding=True))
+            self.headers.update({'content-encoding': 'gzip'})
 
         self.headers.setdefault('content-type', 'application/json')
         ca_certs = CA_CERTS if ca_certs is None else ca_certs
@@ -111,6 +118,9 @@ class Urllib3HttpConnection(Connection):
                 url = url.encode('utf-8')
             if not isinstance(method, str):
                 method = method.encode('utf-8')
+
+            if self.http_compress and body:
+                body = gzip.compress(body)
 
             response = self.pool.urlopen(method, url, body, retries=False, headers=self.headers, **kw)
             duration = time.time() - start
